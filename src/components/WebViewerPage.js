@@ -1,10 +1,10 @@
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState} from 'react';
 
 // const RerunViewer = React.lazy(() => import('@rerun-io/web-viewer-react')); // ✅ async import
 
 export default function WebViewerPage() {
-  const [rrdData, setRrdData] = useState(null);
+  const [setRrdData] = useState(null);
 
   //const params = useQueryParams()
 
@@ -20,7 +20,7 @@ export default function WebViewerPage() {
     };
 
     fetchRRD();
-  }, []);
+  });
 
   return (
     <div style={{ width: "100%", height: "100vh" }}>
@@ -36,7 +36,8 @@ export default function WebViewerPage() {
       <iframe
         width={"90%"}
         height={"90%"}
-        src="https://app.rerun.io/version/0.23.4/index.html?url=http://localhost:5002/last-uploaded&url=http://localhost:5002/get-blueprint"
+        //src="https://app.rerun.io/version/0.23.4/index.html?url=http://localhost:5002/last-uploaded&url=http://localhost:5002/get-blueprint"
+        src="https://app.rerun.io/version/latest/index.html?url=ws://localhost:9876&url=http://localhost:5002/blueprints/<blueprint_id>.rrd" 
         title="Rerun Web Viewer"
       ></iframe>
 
