@@ -3,7 +3,9 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './components/Home';
 import Upload from './components/Upload';
 import LiveStream from './components/LiveStream';
-import WebViewerPage from './components/WebViewerPage';
+// import WebViewerPage from './components/WebViewerPage';
+import RerunIframeViewer from './components/RerunIframeViewer';
+
 
 export default function App() {
   return (
@@ -12,7 +14,8 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/upload" element={<Upload />} />
         <Route path="/live" element={<LiveStream />} />
-        <Route path="/viewer" element={<WebViewerPage />} />
+        {/* <Route path="/viewer" element={<WebViewerPage />} /> */}
+        <Route path="/viewer" element={<RerunIframeViewer />} />
       </Routes>
     </Router>
   );

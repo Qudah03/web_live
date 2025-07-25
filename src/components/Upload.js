@@ -102,7 +102,7 @@ export default function Upload() {
             }}>
               <iframe 
                 // The iframe loads with TWO URLs:
-                src="https://app.rerun.io/version/0.23.4/index.html?url=http://localhost:5002/last-uploaded&url=http://localhost:5002/get-blueprint"
+                src="https://app.rerun.io/version/0.24.0/index.html?url=http://localhost:5002/last-uploaded&url=http://localhost:5002/get-blueprint"
                 //                                                     ↑                                    ↑
                 //                                              Your uploaded file                    Blueprint file                
                 width="100%" 

@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@rerun-io/web-viewer": "^0.23.4",
-    "@rerun-io/web-viewer-react": "^0.23.4",
+    "@rerun-io/web-viewer": "^0.24.0",
+    "@rerun-io/web-viewer-react": "^0.24.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
