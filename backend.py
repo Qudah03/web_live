@@ -3,11 +3,17 @@
 
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-import os
+import os, signal
 import tempfile
 
 from waitress import serve
 import uuid
+import sys
+
+if sys.platform == "win32":
+    from subprocess import CREATE_NEW_PROCESS_GROUP
+else:
+    CREATE_NEW_PROCESS_GROUP = 0
 import rerun as rr
 import rerun.blueprint as rrb
 import subprocess
@@ -56,7 +62,8 @@ def start_session():
         record_path,         # <-- record into this file
         '--serve',
         '--port', '9876'
-    ])
+    ],
+    creationflags=CREATE_NEW_PROCESS_GROUP)
     print(f"[start-session] Rerun CLI record+serve PID={rerun_server_proc.pid}")
     wait_for_rerun_ready()
 
@@ -168,24 +175,26 @@ def stop_session():
     """Stop the current Rerun session (terminate the CLI process)."""
     global rerun_server_proc
     if rerun_server_proc and rerun_server_proc.poll() is None:
-        rerun_server_proc.terminate()
-        rerun_server_proc.wait()
+        print("[stop-session] Sending CTRL_BREAK_EVENT to Rerun CLI")
+        rerun_server_proc.send_signal(signal.CTRL_BREAK_EVENT)
+        rerun_server_proc.wait(timeout=5)
+        print("[stop-session] Rerun CLI stopped")
     return jsonify({"status": "stopped", "message": "Session stopped"})
 
-@app.route('/api/save-recording', methods=['POST'])
-def save_recording():
-    """Return the URL to the saved .rrd file if it exists."""
-    global record_path
-    abs_path = os.path.abspath(record_path or "")
-    if not os.path.exists(abs_path):
-        return jsonify(status='error', message='Recording missing'), 404
+# @app.route('/api/save-recording', methods=['POST'])
+# def save_recording():
+#     """Return the URL to the saved .rrd file if it exists."""
+#     global record_path
+#     abs_path = os.path.abspath(record_path or "")
+#     if not os.path.exists(abs_path):
+#         return jsonify(status='error', message='Recording missing'), 404
 
-    filename = os.path.basename(record_path)
-    return jsonify({
-        "status": "success",
-        "filename": filename,
-        "url": f"http://localhost:5002/blueprints/{filename}"
-    })
+#     filename = os.path.basename(record_path)
+#     return jsonify({
+#         "status": "success",
+#         "filename": filename,
+#         "url": f"http://localhost:5002/blueprints/{filename}"
+#     })
 
 
 # @app.route('/server-status', methods=['GET'])

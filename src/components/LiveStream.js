@@ -76,7 +76,7 @@ export default function LiveStream() {
   // // Stop live session
   const stopSession = async () => {
     await fetch('http://localhost:5002/api/stop-session', { method: 'POST' });
-    setLive(false);
+    setLive(true);
     setCanSave(true);
   };
 
@@ -169,11 +169,11 @@ export default function LiveStream() {
             disabled={!live}
             className="bg-yellow-600 text-white px-4 py-2 rounded disabled:opacity-50"
           >Stop Listening</button>
-          <button
+          {/* <button
             onClick={saveRecording}
             disabled={!canSave}
             className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50"
-          >Save Recording</button>
+          >Save Recording</button> */}
         </div>
       </div>
 
