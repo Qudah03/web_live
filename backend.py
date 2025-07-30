@@ -63,6 +63,7 @@ def start_session():
         '--serve',
         '--port', '9876'
     ],
+    preexec_fn=os.setsid if sys.platform != "win32" else None,  # << add this :  allow group termination (Linux/macOS)
     creationflags=CREATE_NEW_PROCESS_GROUP)
     print(f"[start-session] Rerun CLI record+serve PID={rerun_server_proc.pid}")
     wait_for_rerun_ready()
@@ -174,11 +175,26 @@ def start_session():
 def stop_session():
     """Stop the current Rerun session (terminate the CLI process)."""
     global rerun_server_proc
+
+     # Step 1: Disconnect Rerun gRPC client cleanly to avoid transport errors
+    try:
+        rr.disconnect()
+        print("[stop-session] rr.disconnect() successful")
+    except Exception as e:
+        print(f"[stop-session] rr.disconnect() failed: {e}")
+
+    # Step 2: Kill the rerun CLI process depending on platform
     if rerun_server_proc and rerun_server_proc.poll() is None:
-        print("[stop-session] Sending CTRL_BREAK_EVENT to Rerun CLI")
-        rerun_server_proc.send_signal(signal.CTRL_BREAK_EVENT)
+        print("[stop-session] Stopping rerun CLI...")
+        if sys.platform == "win32":
+            rerun_server_proc.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(os.getpgid(rerun_server_proc.pid), signal.SIGTERM)
+            # On Linux/macOS, if rerun spawns subprocesses, rerun_server_proc.terminate() won’t kill them.
+            # os.setsid + os.killpg(...) guarantees the whole process group gets nuked.
         rerun_server_proc.wait(timeout=5)
         print("[stop-session] Rerun CLI stopped")
+
     return jsonify({"status": "stopped", "message": "Session stopped"})
 
 # @app.route('/api/save-recording', methods=['POST'])
@@ -423,5 +439,16 @@ if __name__ == '__main__':
         serve(app, host='127.0.0.1', port=5002, threads=4)
     finally:
         if rerun_server_proc and rerun_server_proc.poll() is None:
-            rerun_server_proc.terminate()
-            rerun_server_proc.wait()
+            print("[shutdown] Flask server exiting, stopping Rerun CLI...")
+        try:
+            rr.disconnect()
+        except Exception as e:
+            print(f"[shutdown] rr.disconnect() failed: {e}")
+        
+        if sys.platform == "win32":
+            rerun_server_proc.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(os.getpgid(rerun_server_proc.pid), signal.SIGTERM)
+        rerun_server_proc.wait(timeout=5)
+        print("[shutdown] Rerun CLI terminated")
+
