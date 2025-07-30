@@ -5,6 +5,7 @@ import Upload from './components/Upload';
 import LiveStream from './components/LiveStream';
 // import WebViewerPage from './components/WebViewerPage';
 import RerunIframeViewer from './components/RerunIframeViewer';
+import GraphSelector from './components/GraphSelector';
 
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/live" element={<LiveStream />} />
         {/* <Route path="/viewer" element={<WebViewerPage />} /> */}
         <Route path="/viewer" element={<RerunIframeViewer />} />
+        <Route path="/graph-selector" element={<GraphSelector />} />
       </Routes>
     </Router>
   );
