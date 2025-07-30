@@ -1,0 +1,99 @@
+import React, { useState } from 'react';
+
+const generateSubcarriers = () => Array.from({ length: 64 }, (_, i) => i + 1);
+
+const SubcarrierSelector = ({ label, onChange }) => {
+  const [selected, setSelected] = useState(generateSubcarriers()); // all selected by default
+  const [confirmed, setConfirmed] = useState(false);
+
+  const toggleSubcarrier = (num) => {
+    if (confirmed) return;
+    setSelected((prev) =>
+      prev.includes(num) ? prev.filter((n) => n !== num) : [...prev, num]
+    );
+  };
+
+  const selectAll = () => {
+    if (confirmed) return;
+    setSelected(generateSubcarriers());
+  };
+
+  const deselectAll = () => {
+    if (confirmed) return;
+    setSelected([]);
+  };
+
+  const confirmSelection = () => {
+    setConfirmed(true);
+    onChange && onChange(selected);
+  };
+
+  return (
+    <div
+      style={{
+        border: '1px solid #ddd',
+        borderRadius: '8px',
+        padding: '12px',
+        marginTop: '20px',
+      }}
+    >
+      <h4>{label} – Select Subcarriers</h4>
+
+      {!confirmed && (
+        <div style={{ marginBottom: '8px' }}>
+          <button onClick={selectAll} style={{ marginRight: '8px' }}>
+            Select All
+          </button>
+          <button onClick={deselectAll}>Deselect All</button>
+        </div>
+      )}
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(8, 1fr)',
+          gap: '8px',
+          maxHeight: '200px',
+          overflowY: 'auto',
+        }}
+      >
+        {generateSubcarriers().map((num) => (
+          <label key={num}>
+            <input
+              type="checkbox"
+              checked={selected.includes(num)}
+              disabled={confirmed}
+              onChange={() => toggleSubcarrier(num)}
+            />
+            {num}
+          </label>
+        ))}
+      </div>
+
+      {!confirmed && (
+        <button
+          onClick={confirmSelection}
+          style={{
+            marginTop: '12px',
+            padding: '6px 12px',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+          }}
+        >
+          Confirm Selection
+        </button>
+      )}
+
+      {confirmed && (
+        <p style={{ marginTop: '12px', color: 'green' }}>
+          Selection confirmed ({selected.length} subcarriers)
+        </p>
+      )}
+    </div>
+  );
+};
+
+export default SubcarrierSelector;
