@@ -283,113 +283,113 @@ def health_check():
         "last_uploaded_exists": os.path.exists(UPLOAD_PATH)
     })
 
-@app.route('/api/live-blueprint', methods=['POST'])
-def live_blueprint():
-    try:
-        cfg = request.json
-        print(f"Generating blueprint with config: {cfg}")
+# @app.route('/api/live-blueprint', methods=['POST'])
+# def live_blueprint():
+#     try:
+#         cfg = request.json
+#         print(f"Generating blueprint with config: {cfg}")
 
-        rr.init("csi-camera-stream")
+#         rr.init("csi-camera-stream")
 
-        cols = []
+#         cols = []
 
-        # Only add camera column if requested
-        if cfg.get("showCamera", False):
-            camera_col = rrb.Vertical(
-                rrb.Spatial2DView(
-                    origin="camera/live_feed",
-                    contents=["camera/**"],
-                    name="Camera Feed"
-                ),
-                row_shares=[1.0]
-            )
-            cols.append(camera_col)
+#         # Only add camera column if requested
+#         if cfg.get("showCamera", False):
+#             camera_col = rrb.Vertical(
+#                 rrb.Spatial2DView(
+#                     origin="camera/live_feed",
+#                     contents=["camera/**"],
+#                     name="Camera Feed"
+#                 ),
+#                 row_shares=[1.0]
+#             )
+#             cols.append(camera_col)
 
-        # Heatmap column (always present)
-        heatmap_views = []
-        if cfg.get("showMagHeatmap", False):
-            heatmap_views.append(
-                rrb.TensorView(
-                    origin="csi/magnitude_heatmap",
-                    contents=["csi/magnitude_heatmap"],
-                    name="Magnitude Heatmap",
-                    view_fit="fill",
-                )
-            )
-        if cfg.get("showPhaseHeatmap", False):
-            heatmap_views.append(
-                rrb.TensorView(
-                    origin="csi/phase_heatmap",
-                    contents=["csi/phase_heatmap"],
-                    name="Phase Heatmap",
-                    view_fit="fill",
-                )
-            )
-        if not heatmap_views:
-            heatmap_views.append(
-                rrb.TextDocumentView(
-                    origin="info",
-                    contents=["info"],
-                    name="No Heatmap Selected"
-                )
-            )
-        heatmap_col = rrb.Vertical(*heatmap_views, row_shares=[1.0]*len(heatmap_views))
-        cols.append(heatmap_col)
+#         # Heatmap column (always present)
+#         heatmap_views = []
+#         if cfg.get("showMagHeatmap", False):
+#             heatmap_views.append(
+#                 rrb.TensorView(
+#                     origin="csi/magnitude_heatmap",
+#                     contents=["csi/magnitude_heatmap"],
+#                     name="Magnitude Heatmap",
+#                     view_fit="fill",
+#                 )
+#             )
+#         if cfg.get("showPhaseHeatmap", False):
+#             heatmap_views.append(
+#                 rrb.TensorView(
+#                     origin="csi/phase_heatmap",
+#                     contents=["csi/phase_heatmap"],
+#                     name="Phase Heatmap",
+#                     view_fit="fill",
+#                 )
+#             )
+#         if not heatmap_views:
+#             heatmap_views.append(
+#                 rrb.TextDocumentView(
+#                     origin="info",
+#                     contents=["info"],
+#                     name="No Heatmap Selected"
+#                 )
+#             )
+#         heatmap_col = rrb.Vertical(*heatmap_views, row_shares=[1.0]*len(heatmap_views))
+#         cols.append(heatmap_col)
 
-        # TimeSeries column (always present)
-        timeseries_views = []
-        if cfg.get("showTimeSeries", False):
-            for sc in cfg.get("subcarriers", []):
-                if cfg.get("showMagTimeSeries", False):
-                    path = f"magnitude_vs_time/subcarrier_{sc:03d}"
-                    timeseries_views.append(
-                        rrb.TimeSeriesView(
-                            origin=path,
-                            contents=[path],
-                            name=f"Magnitude SC {sc}"
-                        )
-                    )
-                if cfg.get("showPhaseTimeSeries", False):
-                    path = f"phase_vs_time/subcarrier_{sc:03d}"
-                    timeseries_views.append(
-                        rrb.TimeSeriesView(
-                            origin=path,
-                            contents=[path],
-                            name=f"Phase SC {sc}"
-                        )
-                    )
-        if not timeseries_views:
-            timeseries_views.append(
-                rrb.TextDocumentView(
-                    origin="info",
-                    contents=["info"],
-                    name="No TimeSeries Selected"
-                )
-            )
-        timeseries_col = rrb.Vertical(*timeseries_views, row_shares=[1.0]*len(timeseries_views))
-        cols.append(timeseries_col)
+#         # TimeSeries column (always present)
+#         timeseries_views = []
+#         if cfg.get("showTimeSeries", False):
+#             for sc in cfg.get("subcarriers", []):
+#                 if cfg.get("showMagTimeSeries", False):
+#                     path = f"magnitude_vs_time/subcarrier_{sc:03d}"
+#                     timeseries_views.append(
+#                         rrb.TimeSeriesView(
+#                             origin=path,
+#                             contents=[path],
+#                             name=f"Magnitude SC {sc}"
+#                         )
+#                     )
+#                 if cfg.get("showPhaseTimeSeries", False):
+#                     path = f"phase_vs_time/subcarrier_{sc:03d}"
+#                     timeseries_views.append(
+#                         rrb.TimeSeriesView(
+#                             origin=path,
+#                             contents=[path],
+#                             name=f"Phase SC {sc}"
+#                         )
+#                     )
+#         if not timeseries_views:
+#             timeseries_views.append(
+#                 rrb.TextDocumentView(
+#                     origin="info",
+#                     contents=["info"],
+#                     name="No TimeSeries Selected"
+#                 )
+#             )
+#         timeseries_col = rrb.Vertical(*timeseries_views, row_shares=[1.0]*len(timeseries_views))
+#         cols.append(timeseries_col)
 
-        # Final layout: columns based on selection
-        layout = rrb.Horizontal(*cols, column_shares=[1.0]*len(cols))
+#         # Final layout: columns based on selection
+#         layout = rrb.Horizontal(*cols, column_shares=[1.0]*len(cols))
 
-        blueprint = rrb.Blueprint(layout, collapse_panels=True)
-        blueprint_id = f"{uuid.uuid4()}.rrd"
-        blueprint_path = os.path.join(BLUEPRINTS_DIR, blueprint_id)
-        rr.save(blueprint_path, blueprint)
+#         blueprint = rrb.Blueprint(layout, collapse_panels=True)
+#         blueprint_id = f"{uuid.uuid4()}.rrd"
+#         blueprint_path = os.path.join(BLUEPRINTS_DIR, blueprint_id)
+#         rr.save(blueprint_path, blueprint)
 
-        url = f"http://localhost:5002/blueprints/{blueprint_id}"
-        return jsonify({
-            "status": "success",
-            "blueprintUrl": url,
-            "blueprintId": blueprint_id
-        })
+#         url = f"http://localhost:5002/blueprints/{blueprint_id}"
+#         return jsonify({
+#             "status": "success",
+#             "blueprintUrl": url,
+#             "blueprintId": blueprint_id
+#         })
 
-    except Exception as e:
-        print(f"Error generating blueprint: {e}")
-        return jsonify({
-            "status": "error",
-            "message": f"Failed to generate blueprint: {e}"
-        }), 500
+#     except Exception as e:
+#         print(f"Error generating blueprint: {e}")
+#         return jsonify({
+#             "status": "error",
+#             "message": f"Failed to generate blueprint: {e}"
+#         }), 500
 
 
 @app.route('/blueprints/<blueprint_id>', methods=['GET'])

@@ -30,7 +30,7 @@ export default function LiveStream() {
   const [subcarriers, setSubcarriers]     = useState([]);
   const [showCamera, setShowCamera]       = useState(false);
   const [live, setLive] = useState(false);
-  const [canSave, setCanSave] = useState(false);
+  const [ setCanSave] = useState(false);
   const iframeRef = useRef();
 
   // Start live session
@@ -77,7 +77,7 @@ export default function LiveStream() {
   const stopSession = async () => {
     await fetch('http://localhost:5002/api/stop-session', { method: 'POST' });
     setLive(true);
-    setCanSave(true);
+    // setCanSave(true);
   };
 
   // Save & download recording
