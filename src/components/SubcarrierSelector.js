@@ -28,72 +28,101 @@ const SubcarrierSelector = ({ label, onChange }) => {
     onChange && onChange(selected);
   };
 
-  return (
+    return (
     <div
-      style={{
+        style={{
         border: '1px solid #ddd',
         borderRadius: '8px',
         padding: '12px',
         marginTop: '20px',
-      }}
-    >
-      <h4>{label} – Select Subcarriers</h4>
-
-      {!confirmed && (
-        <div style={{ marginBottom: '8px' }}>
-          <button onClick={selectAll} style={{ marginRight: '8px' }}>
-            Select All
-          </button>
-          <button onClick={deselectAll}>Deselect All</button>
-        </div>
-      )}
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(8, 1fr)',
-          gap: '8px',
-          maxHeight: '200px',
-          overflowY: 'auto',
         }}
-      >
-        {generateSubcarriers().map((num) => (
-          <label key={num}>
-            <input
-              type="checkbox"
-              checked={selected.includes(num)}
-              disabled={confirmed}
-              onChange={() => toggleSubcarrier(num)}
-            />
-            {num}
-          </label>
-        ))}
-      </div>
+    >
+        <h4>{label} – Select Subcarriers</h4>
 
-      {!confirmed && (
-        <button
-          onClick={confirmSelection}
-          style={{
-            marginTop: '12px',
-            padding: '6px 12px',
-            backgroundColor: '#4CAF50',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-          }}
-        >
-          Confirm Selection
-        </button>
-      )}
+        {!confirmed ? (
+        <>
+            <div style={{ marginBottom: '8px' }}>
+            <button onClick={selectAll} style={{ marginRight: '8px' }}>
+                Select All
+            </button>
+            <button onClick={deselectAll}>Deselect All</button>
+            </div>
 
-      {confirmed && (
-        <p style={{ marginTop: '12px', color: 'green' }}>
-          Selection confirmed ({selected.length} subcarriers)
-        </p>
-      )}
+            <div
+            style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(8, 1fr)',
+                gap: '8px',
+                maxHeight: '200px',
+                overflowY: 'auto',
+            }}
+            >
+            {generateSubcarriers().map((num) => (
+                <label key={num}>
+                <input
+                    type="checkbox"
+                    checked={selected.includes(num)}
+                    onChange={() => toggleSubcarrier(num)}
+                />
+                {num}
+                </label>
+            ))}
+            </div>
+
+            <button
+            onClick={confirmSelection}
+            style={{
+                marginTop: '12px',
+                padding: '6px 12px',
+                backgroundColor: '#4CAF50',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+            }}
+            >
+            Confirm Selection
+            </button>
+        </>
+        ) : (
+        <>
+            <p style={{ marginTop: '12px', color: 'green' }}>
+            Selection confirmed ({selected.length} subcarriers)
+            </p>
+            <div
+            style={{
+                marginTop: '10px',
+                padding: '10px',
+                backgroundColor: '#f6f6f6',
+                borderRadius: '6px',
+                maxHeight: '150px',
+                overflowY: 'auto',
+                fontSize: '14px',
+                lineHeight: '1.5',
+            }}
+            >
+            {selected.join(', ')}
+            </div>
+
+            <button
+            onClick={() => setConfirmed(false)}
+            style={{
+                marginTop: '10px',
+                padding: '6px 12px',
+                backgroundColor: '#f0ad4e',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+            }}
+            >
+            Edit
+            </button>
+        </>
+        )}
     </div>
-  );
+    );
+
 };
 
 export default SubcarrierSelector;
