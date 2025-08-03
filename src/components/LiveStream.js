@@ -30,7 +30,7 @@ export default function LiveStream() {
   const [subcarriers, setSubcarriers]     = useState([]);
   const [showCamera, setShowCamera]       = useState(false);
   const [live, setLive] = useState(false);
-  const [ setCanSave] = useState(false);
+  const [setCanSave] = useState(false);
   const iframeRef = useRef();
 
   // Start live session
@@ -80,26 +80,7 @@ export default function LiveStream() {
     // setCanSave(true);
   };
 
-  // Save & download recording
-  const saveRecording = async () => {
-    const resp = await fetch('http://localhost:5002/api/save-recording', { method: 'POST' });
-    const data = await resp.json();
-    if (!resp.ok || data.status !== 'success' || !data.url) {
-      setError(data.message || 'Failed to save recording');
-      return;
-    }
-
-    // Use plain HTTP URL for playback; supply blueprint layout separately
-    const params = [
-      `url=${encodeURIComponent(data.url)}`,
-      `blueprint=${encodeURIComponent('http://localhost:5002/get-blueprint')}`
-    ].join('&');
-
-    setIframeSrc(
-      `https://app.rerun.io/version/0.24.0/index.html?${params}`
-    );
-    setCanSave(false);
-  };
+  // Save & download recording (deleted)
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
