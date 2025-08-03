@@ -80,7 +80,7 @@ export default function Home() {
         <GraphSelector onSelectionChange={handleGraphSelection} />
 
         {/* ✅ Display selected graphs */}
-        {selectedGraphs.length > 0 ? (
+        {/* {selectedGraphs.length > 0 ? (
           <div style={{ marginTop: '20px', padding: '10px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
             <h3 style={{ marginBottom: '10px' }}>Selected Graphs:</h3>
             <ol style={{ paddingLeft: '20px' }}>
@@ -93,7 +93,7 @@ export default function Home() {
           </div>
         ) : (
           <p style={{ marginTop: '20px' }}>No graph selected</p>
-        )}
+        )} */}
 
         {/* ✅ Start Button */}
         <button
