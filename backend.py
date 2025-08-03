@@ -50,6 +50,18 @@ def wait_for_rerun_ready(host="127.0.0.1", port=9876, timeout=10, interval=0.2):
 def start_session():
     global rerun_server_proc, record_path
 
+    # Stop any existing session first
+    if rerun_server_proc and rerun_server_proc.poll() is None:
+        print("[start-session] Stopping existing rerun CLI...")
+        try:
+            if sys.platform == "win32":
+                rerun_server_proc.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                os.killpg(os.getpgid(rerun_server_proc.pid), signal.SIGTERM)
+            rerun_server_proc.wait(timeout=5)
+        except Exception as e:
+            print(f"[start-session] Error stopping existing process: {e}")
+        
     # (A) build the path ONCE per session
     record_path = os.path.join(
         BLUEPRINTS_DIR,
@@ -57,103 +69,172 @@ def start_session():
     )
 
     # (B) spawn CLI in record+serve mode
-    rerun_server_proc = subprocess.Popen([
-        'rerun',
-        record_path,         # <-- record into this file
-        '--serve',
-        '--port', '9876'
-    ],
-    preexec_fn=os.setsid if sys.platform != "win32" else None,  # << add this :  allow group termination (Linux/macOS)
-    creationflags=CREATE_NEW_PROCESS_GROUP)
-    print(f"[start-session] Rerun CLI record+serve PID={rerun_server_proc.pid}")
-    wait_for_rerun_ready()
+    try:
+        rerun_server_proc = subprocess.Popen([
+            'rerun',
+            record_path,         # <-- record into this file
+            '--serve',
+            '--port', '9876'
+        ],
+
+        preexec_fn=os.setsid if sys.platform != "win32" else None,  # << add this :  allow group termination (Linux/macOS)
+        creationflags=CREATE_NEW_PROCESS_GROUP)
+        print(f"[start-session] Rerun CLI record+serve PID={rerun_server_proc.pid}")
+        wait_for_rerun_ready()
+
+    except Exception as e:
+        print(f"[start-session] Failed to start Rerun server: {e}")
+        return jsonify({"status": "error", "message": f"Failed to start Rerun server: {e}"}), 500
 
     # (2) prepare file sink
     cfg = request.json or {}
+    
+    # Get the total number of graphs for layout calculation
+    total_graphs = cfg.get("totalGraphs", 1)
+    print(f"[start-session] Configuring layout for {total_graphs} graphs")
 
     # (3) init Rerun: live gRPC only (no file sink, CLI handles recording)
-    rr.init("csi-camera-stream", spawn=False)
-    rr.set_sinks(rr.GrpcSink())
+    rr.init("csi-camera-stream", spawn=False) # <-- spawn=False to avoid double init, csi-camera-stream is the app ID
+    rr.set_sinks(                               rr.GrpcSink()) # <-- use gRPC sink only, CLI handles recording
+    #     ^                                       ^
+    # Stream data to multiple different sinks. Initialize a gRPC sink
     print(f"[start-session] Live + saving to {record_path}")
 
-    # (4) build & send blueprint (your existing code)
+    # (4) build & send blueprint - create individual columns for each graph
     cols = []
-    if cfg.get("showCamera", False):
-        camera_col = rrb.Vertical(
-            rrb.Spatial2DView(
-                origin="camera/live_feed",
-                contents=["camera/**"],
-                name="Camera Feed"
-            ),
-            row_shares=[1.0]
-        )
-        cols.append(camera_col)
-
-    heatmap_views = []
-    if cfg.get("showMagHeatmap", False):
-        heatmap_views.append(
-            rrb.TensorView(
-                origin="csi/magnitude_heatmap",
-                contents=["csi/magnitude_heatmap"],
-                name="Magnitude Heatmap",
-                view_fit="fill",
+    
+    # Get individual graph configurations
+    graph_configs = cfg.get("graphConfigs", [])
+    print(f"[start-session] Processing {len(graph_configs)} graph configs: {graph_configs}")
+    
+    for i, graph_config in enumerate(graph_configs):
+        graph_type = graph_config.get("type", "heatmap")
+        mode = graph_config.get("mode", "magnitude")
+        subcarrier = graph_config.get("subcarrier")
+        
+        print(f"[start-session] Graph {i+1}: type={graph_type}, mode={mode}, subcarrier={subcarrier}")
+        
+        if graph_type == "camera":
+            camera_col = rrb.Vertical(
+                rrb.Spatial2DView(
+                    origin="camera/live_feed",
+                    contents=["camera/**"],
+                    name=f"Camera Feed"
+                ),
+                row_shares=[1.0]
             )
-        )
-    if cfg.get("showPhaseHeatmap", False):
-        heatmap_views.append(
-            rrb.TensorView(
-                origin="csi/phase_heatmap",
-                contents=["csi/phase_heatmap"],
-                name="Phase Heatmap",
-                view_fit="fill",
+            cols.append(camera_col)
+            
+        elif graph_type == "heatmap":
+            if mode == "magnitude":
+                heatmap_view = rrb.TensorView(
+                    origin="csi/magnitude_heatmap",
+                    contents=["csi/magnitude_heatmap"],
+                    name=f"Magnitude Heatmap {i+1}",
+                    view_fit="fill",
+                )
+            else:  # phase
+                heatmap_view = rrb.TensorView(
+                    origin="csi/phase_heatmap",
+                    contents=["csi/phase_heatmap"],
+                    name=f"Phase Heatmap {i+1}",
+                    view_fit="fill",
+                )
+            heatmap_col = rrb.Vertical(heatmap_view, row_shares=[1.0])
+            cols.append(heatmap_col)
+            
+        elif graph_type == "timeseries" and subcarrier is not None:
+            # Handle subcarrier formatting - ensure it's an integer
+            if isinstance(subcarrier, str):
+                if subcarrier == "all":
+                    # For "all" subcarriers, show the raw time series data as it comes from source
+                    if mode == "magnitude":
+                        path = "magnitude_vs_time"  # Raw path without subcarrier filtering
+                        name = f"All Magnitude TS ({i+1})"
+                    else:  # phase
+                        path = "phase_vs_time"  # Raw path without subcarrier filtering
+                        name = f"All Phase TS ({i+1})"
+                        
+                    timeseries_view = rrb.TimeSeriesView(
+                        origin=path,
+                        contents=[f"{path}/**"],  # Include all subcarriers under this path
+                        name=name
+                    )
+                    timeseries_col = rrb.Vertical(timeseries_view, row_shares=[1.0])
+                    cols.append(timeseries_col)
+                    print(f"[start-session] Added 'all' timeseries column: {name} with path {path}")
+                    continue
+                try:
+                    subcarrier = int(subcarrier)
+                except ValueError:
+                    print(f"[start-session] Invalid subcarrier value: {subcarrier}, skipping")
+                    continue
+            
+            # Handle specific subcarrier
+            if mode == "magnitude":
+                path = f"magnitude_vs_time/subcarrier_{subcarrier:03d}"
+                name = f"Magnitude SC {subcarrier} ({i+1})"
+            else:  # phase
+                path = f"phase_vs_time/subcarrier_{subcarrier:03d}"
+                name = f"Phase SC {subcarrier} ({i+1})"
+                
+            timeseries_view = rrb.TimeSeriesView(
+                origin=path,
+                contents=[path],
+                name=name
             )
+            timeseries_col = rrb.Vertical(timeseries_view, row_shares=[1.0])
+            cols.append(timeseries_col)
+            print(f"[start-session] Added specific timeseries column: {name} with path {path}")
+    
+    # Ensure we have at least one column
+    if not cols:
+        print("[start-session] No valid columns created, adding default heatmap")
+        default_view = rrb.TensorView(
+            origin="csi/magnitude_heatmap",
+            contents=["csi/magnitude_heatmap"],
+            name="Default Magnitude Heatmap",
+            view_fit="fill",
         )
-    # if not heatmap_views:
-    #     heatmap_views.append(
-    #         rrb.TextDocumentView(
-    #             origin="info",
-    #             contents=["info"],
-    #             name="No Heatmap Selected"
-    #         )
-    #     )
-    heatmap_col = rrb.Vertical(*heatmap_views, row_shares=[1.0]*len(heatmap_views))
-    cols.append(heatmap_col)
+        cols.append(rrb.Vertical(default_view, row_shares=[1.0]))
+    
+    print(f"[start-session] Created {len(cols)} columns from {len(graph_configs)} graph configs")
 
-    timeseries_views = []
-    if cfg.get("showTimeSeries", False):
-        for sc in cfg.get("subcarriers", []):
-            if cfg.get("showMagTimeSeries", False):
-                path = f"magnitude_vs_time/subcarrier_{sc:03d}"
-                timeseries_views.append(
-                    rrb.TimeSeriesView(
-                        origin=path,
-                        contents=[path],
-                        name=f"Magnitude SC {sc}"
-                    )
-                )
-            if cfg.get("showPhaseTimeSeries", False):
-                path = f"phase_vs_time/subcarrier_{sc:03d}"
-                timeseries_views.append(
-                    rrb.TimeSeriesView(
-                        origin=path,
-                        contents=[path],
-                        name=f"Phase SC {sc}"
-                    )
-                )
-    # if not timeseries_views:
-    #     timeseries_views.append(
-    #         rrb.TextDocumentView(
-    #             origin="info",
-    #             contents=["info"],
-    #             name="No TimeSeries Selected"
-    #         )
-    #     )
-
-    timeseries_col = rrb.Vertical(*timeseries_views, row_shares=[1.0]*len(timeseries_views))
-    cols.append(timeseries_col)
+    # Create layout based on total number of graphs
+    if total_graphs == 1:
+        # Single graph takes full width
+        layout = rrb.Horizontal(*cols, column_shares=[1.0])
+    elif total_graphs == 2:
+        # Side by side: 50/50 split
+        layout = rrb.Horizontal(*cols, column_shares=[0.5, 0.5])
+    elif total_graphs == 4:
+        # 2x2 grid layout
+        if len(cols) >= 4:
+            top_row = rrb.Horizontal(cols[0], cols[1], column_shares=[0.5, 0.5])
+            bottom_row = rrb.Horizontal(cols[2], cols[3], column_shares=[0.5, 0.5])
+            layout = rrb.Vertical(top_row, bottom_row, row_shares=[0.5, 0.5])
+        else:
+            # Fallback to horizontal if less than 4 columns
+            column_shares = [1.0/len(cols)] * len(cols)
+            layout = rrb.Horizontal(*cols, column_shares=column_shares)
+    elif total_graphs == 6:
+        # 2x3 grid layout
+        if len(cols) >= 6:
+            top_row = rrb.Horizontal(cols[0], cols[1], cols[2], column_shares=[1.0/3, 1.0/3, 1.0/3])
+            bottom_row = rrb.Horizontal(cols[3], cols[4], cols[5], column_shares=[1.0/3, 1.0/3, 1.0/3])
+            layout = rrb.Vertical(top_row, bottom_row, row_shares=[0.5, 0.5])
+        else:
+            # Fallback to horizontal if less than 6 columns
+            column_shares = [1.0/len(cols)] * len(cols)
+            layout = rrb.Horizontal(*cols, column_shares=column_shares)
+    else:
+        # Default: equal horizontal distribution
+        column_shares = [1.0/len(cols)] * len(cols)
+        layout = rrb.Horizontal(*cols, column_shares=column_shares)
+    
+    print(f"[start-session] Layout: {total_graphs} graphs configured")
 
     # Build and send blueprint (Rerun 0.24+ API)
-    layout = rrb.Horizontal(*cols, column_shares=[1.0] * len(cols))
     blueprint = rrb.Blueprint(layout, collapse_panels=True)
     rr.send_blueprint(blueprint)
     print("[start-session] Blueprint sent")
