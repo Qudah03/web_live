@@ -32,7 +32,7 @@ record_path       = None
 data_proc         = None
 
 # Wait for rerun server to be ready
-def wait_for_rerun_ready(host="127.0.0.1", port=9876, timeout=10, interval=0.2):
+def wait_for_rerun_ready(host="0.0.0.0", port=9876, timeout=10, interval=0.2):
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -242,7 +242,7 @@ def start_session():
     # (5) point iframe at the live gRPC server
     viewer_iframe_url = (
         "https://app.rerun.io/version/0.24.0/index.html"
-        "?url=rerun+http://127.0.0.1:9876/proxy"
+        "?url=rerun+http://0.0.0.0:9876/proxy"
     )
 
     return jsonify({
@@ -517,7 +517,7 @@ if __name__ == '__main__':
     # print("- GET /health: Health check")
     # print("\nThis server only handles file uploads and serving for iframe viewer.")
     try:
-        serve(app, host='127.0.0.1', port=5002, threads=4)
+        serve(app, host='0.0.0.0', port=5002, threads=4)
     finally:
         if rerun_server_proc and rerun_server_proc.poll() is None:
             print("[shutdown] Flask server exiting, stopping Rerun CLI...")
