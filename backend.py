@@ -1,13 +1,24 @@
+#backend.py
+# This file is part of the Rerun project, licensed under the Apache License 
+
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-import os
+import os, signal
 import tempfile
+
 from waitress import serve
 import uuid
+import sys
+
+if sys.platform == "win32":
+    from subprocess import CREATE_NEW_PROCESS_GROUP
+else:
+    CREATE_NEW_PROCESS_GROUP = 0
 import rerun as rr
 import rerun.blueprint as rrb
 import subprocess
-import threading
+import socket
+import time
 
 app = Flask(__name__)
 CORS(app)
@@ -16,67 +27,280 @@ UPLOAD_PATH = os.path.join(tempfile.gettempdir(), "latest.rrd")
 BLUEPRINTS_DIR = "./blueprints"
 os.makedirs(BLUEPRINTS_DIR, exist_ok=True)
 
-record_proc = None
-record_path = None
+rerun_server_proc = None
+record_path       = None
+data_proc         = None
 
-@app.route('/api/start-recording', methods=['POST'])
-def start_recording():
-    global record_proc, record_path
-    if record_proc and record_proc.poll() is None:
-        return jsonify(status='error', message='Already recording'), 409
+# Wait for rerun server to be ready
+def wait_for_rerun_ready(host="127.0.0.1", port=9876, timeout=10, interval=0.2):
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                print("[wait_for_rerun_ready] Rerun server is responsive.")
+                return
+        except OSError:
+            time.sleep(interval)
+    raise RuntimeError("Rerun server did not start in time.")
 
-    record_path = os.path.join(BLUEPRINTS_DIR, f"recording_{uuid.uuid4()}.rrd")
-    cmd = [
-        'rerun',
-        '--connect', 'rerun+http://127.0.0.1:9876/proxy',
-        '--save', record_path,
-        '--',
-        '--subscribe', '**'
-    ]
-    print(f"[start_recording] Command: {' '.join(cmd)}")
+# --- Session-based endpoints ---
+
+# --- Drop-in replacement for session management endpoints ---
+@app.route('/api/start-session', methods=['POST'])
+def start_session():
+    global rerun_server_proc, record_path
+
+    # Stop any existing session first
+    if rerun_server_proc and rerun_server_proc.poll() is None:
+        print("[start-session] Stopping existing rerun CLI...")
+        try:
+            if sys.platform == "win32":
+                rerun_server_proc.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                os.killpg(os.getpgid(rerun_server_proc.pid), signal.SIGTERM)
+            rerun_server_proc.wait(timeout=5)
+        except Exception as e:
+            print(f"[start-session] Error stopping existing process: {e}")
+        
+    # (A) build the path ONCE per session
+    record_path = os.path.join(
+        BLUEPRINTS_DIR,
+        f"recording_{uuid.uuid4()}.rrd"
+    )
+
+    # (B) spawn CLI in record+serve mode
     try:
-        record_proc = subprocess.Popen(cmd)
-        print(f"[start_recording] Started recording to {record_path}, PID={record_proc.pid}")
-        return jsonify(status='recording', filename=os.path.basename(record_path))
+        rerun_server_proc = subprocess.Popen([
+            'rerun',
+            record_path,         # <-- record into this file
+            '--serve',
+            '--port', '9876'
+        ],
+
+        preexec_fn=os.setsid if sys.platform != "win32" else None,  # << add this :  allow group termination (Linux/macOS)
+        creationflags=CREATE_NEW_PROCESS_GROUP)
+        print(f"[start-session] Rerun CLI record+serve PID={rerun_server_proc.pid}")
+        wait_for_rerun_ready()
+
     except Exception as e:
-        print(f"[start_recording] Error: {e}")
-        record_proc = None
-        record_path = None
-        return jsonify(status='error', message=f'Error starting recording: {e}'), 500
+        print(f"[start-session] Failed to start Rerun server: {e}")
+        return jsonify({"status": "error", "message": f"Failed to start Rerun server: {e}"}), 500
 
-@app.route('/api/stop-recording', methods=['POST'])
-def stop_recording():
-    global record_proc, record_path
-    if not record_proc:
-        print("[stop_recording] No record_proc object exists.")
-        return jsonify(status='error', message='Not currently recording'), 404
-    if record_proc.poll() is not None:
-        print(f"[stop_recording] record_proc exists but is not running. Return code: {record_proc.returncode}")
-        return jsonify(status='error', message='Not currently recording'), 404
-    try:
-        print(f"[stop_recording] Stopping recording, PID={record_proc.pid}")
-        record_proc.terminate()  # Windows compatible
-        record_proc.wait()
-        print(f"[stop_recording] Recording stopped, return code={record_proc.returncode}")
-        if record_path and os.path.exists(record_path):
-            print(f"[stop_recording] Sending file: {record_path}")
-            return send_file(record_path, as_attachment=True, download_name=os.path.basename(record_path))
+    # (2) prepare file sink
+    cfg = request.json or {}
+    
+    # Get the total number of graphs for layout calculation
+    total_graphs = cfg.get("totalGraphs", 1)
+    print(f"[start-session] Configuring layout for {total_graphs} graphs")
+
+    # (3) init Rerun: live gRPC only (no file sink, CLI handles recording)
+    rr.init("csi-camera-stream", spawn=False) # <-- spawn=False to avoid double init, csi-camera-stream is the app ID
+    rr.set_sinks(                               rr.GrpcSink()) # <-- use gRPC sink only, CLI handles recording
+    #     ^                                       ^
+    # Stream data to multiple different sinks. Initialize a gRPC sink
+    print(f"[start-session] Live + saving to {record_path}")
+
+    # (4) build & send blueprint - create individual columns for each graph
+    cols = []
+    
+    # Get individual graph configurations
+    graph_configs = cfg.get("graphConfigs", [])
+    print(f"[start-session] Processing {len(graph_configs)} graph configs: {graph_configs}")
+    
+    for i, graph_config in enumerate(graph_configs):
+        graph_type = graph_config.get("type", "heatmap")
+        mode = graph_config.get("mode", "magnitude")
+        subcarrier = graph_config.get("subcarrier")
+        
+        print(f"[start-session] Graph {i+1}: type={graph_type}, mode={mode}, subcarrier={subcarrier}")
+        
+        if graph_type == "camera":
+            camera_col = rrb.Vertical(
+                rrb.Spatial2DView(
+                    origin="camera/live_feed",
+                    contents=["camera/**"],
+                    name=f"Camera Feed"
+                ),
+                row_shares=[1.0]
+            )
+            cols.append(camera_col)
+            
+        elif graph_type == "heatmap":
+            if mode == "magnitude":
+                heatmap_view = rrb.TensorView(
+                    origin="csi/magnitude_heatmap",
+                    contents=["csi/magnitude_heatmap"],
+                    name=f"Magnitude Heatmap {i+1}",
+                    view_fit="fill",
+                )
+            else:  # phase
+                heatmap_view = rrb.TensorView(
+                    origin="csi/phase_heatmap",
+                    contents=["csi/phase_heatmap"],
+                    name=f"Phase Heatmap {i+1}",
+                    view_fit="fill",
+                )
+            heatmap_col = rrb.Vertical(heatmap_view, row_shares=[1.0])
+            cols.append(heatmap_col)
+            
+        elif graph_type == "timeseries" and subcarrier is not None:
+            # Handle subcarrier formatting - ensure it's an integer
+            if isinstance(subcarrier, str):
+                if subcarrier == "all":
+                    # For "all" subcarriers, show the raw time series data as it comes from source
+                    if mode == "magnitude":
+                        path = "magnitude_vs_time"  # Raw path without subcarrier filtering
+                        name = f"All Magnitude TS ({i+1})"
+                    else:  # phase
+                        path = "phase_vs_time"  # Raw path without subcarrier filtering
+                        name = f"All Phase TS ({i+1})"
+                        
+                    timeseries_view = rrb.TimeSeriesView(
+                        origin=path,
+                        contents=[f"{path}/**"],  # Include all subcarriers under this path
+                        name=name
+                    )
+                    timeseries_col = rrb.Vertical(timeseries_view, row_shares=[1.0])
+                    cols.append(timeseries_col)
+                    print(f"[start-session] Added 'all' timeseries column: {name} with path {path}")
+                    continue
+                try:
+                    subcarrier = int(subcarrier)
+                except ValueError:
+                    print(f"[start-session] Invalid subcarrier value: {subcarrier}, skipping")
+                    continue
+            
+            # Handle specific subcarrier
+            if mode == "magnitude":
+                path = f"magnitude_vs_time/subcarrier_{subcarrier:03d}"
+                name = f"Magnitude SC {subcarrier} ({i+1})"
+            else:  # phase
+                path = f"phase_vs_time/subcarrier_{subcarrier:03d}"
+                name = f"Phase SC {subcarrier} ({i+1})"
+                
+            timeseries_view = rrb.TimeSeriesView(
+                origin=path,
+                contents=[path],
+                name=name
+            )
+            timeseries_col = rrb.Vertical(timeseries_view, row_shares=[1.0])
+            cols.append(timeseries_col)
+            print(f"[start-session] Added specific timeseries column: {name} with path {path}")
+    
+    # Ensure we have at least one column
+    if not cols:
+        print("[start-session] No valid columns created, adding default heatmap")
+        default_view = rrb.TensorView(
+            origin="csi/magnitude_heatmap",
+            contents=["csi/magnitude_heatmap"],
+            name="Default Magnitude Heatmap",
+            view_fit="fill",
+        )
+        cols.append(rrb.Vertical(default_view, row_shares=[1.0]))
+    
+    print(f"[start-session] Created {len(cols)} columns from {len(graph_configs)} graph configs")
+
+    # Create layout based on total number of graphs
+    if total_graphs == 1:
+        # Single graph takes full width
+        layout = rrb.Horizontal(*cols, column_shares=[1.0])
+    elif total_graphs == 2:
+        # Side by side: 50/50 split
+        layout = rrb.Horizontal(*cols, column_shares=[0.5, 0.5])
+    elif total_graphs == 4:
+        # 2x2 grid layout
+        if len(cols) >= 4:
+            top_row = rrb.Horizontal(cols[0], cols[1], column_shares=[0.5, 0.5])
+            bottom_row = rrb.Horizontal(cols[2], cols[3], column_shares=[0.5, 0.5])
+            layout = rrb.Vertical(top_row, bottom_row, row_shares=[0.5, 0.5])
         else:
-            print(f"[stop_recording] File not found after stop: {record_path}")
-            return jsonify(status='error', message='Recording file not found'), 500
-    except Exception as e:
-        print(f"[stop_recording] Error: {e}")
-        return jsonify(status='error', message=f'Error stopping recording: {e}'), 500
+            # Fallback to horizontal if less than 4 columns
+            column_shares = [1.0/len(cols)] * len(cols)
+            layout = rrb.Horizontal(*cols, column_shares=column_shares)
+    elif total_graphs == 6:
+        # 2x3 grid layout
+        if len(cols) >= 6:
+            top_row = rrb.Horizontal(cols[0], cols[1], cols[2], column_shares=[1.0/3, 1.0/3, 1.0/3])
+            bottom_row = rrb.Horizontal(cols[3], cols[4], cols[5], column_shares=[1.0/3, 1.0/3, 1.0/3])
+            layout = rrb.Vertical(top_row, bottom_row, row_shares=[0.5, 0.5])
+        else:
+            # Fallback to horizontal if less than 6 columns
+            column_shares = [1.0/len(cols)] * len(cols)
+            layout = rrb.Horizontal(*cols, column_shares=column_shares)
+    else:
+        # Default: equal horizontal distribution
+        column_shares = [1.0/len(cols)] * len(cols)
+        layout = rrb.Horizontal(*cols, column_shares=column_shares)
+    
+    print(f"[start-session] Layout: {total_graphs} graphs configured")
 
-## Removed /api/stop-and-download endpoint, not needed for one-shot save
+    # Build and send blueprint (Rerun 0.24+ API)
+    blueprint = rrb.Blueprint(layout, collapse_panels=True)
+    rr.send_blueprint(blueprint)
+    print("[start-session] Blueprint sent")
 
-@app.route('/server-status', methods=['GET'])
-def server_status():
-    """Always return running status for iframe mode"""
+    # (5) point iframe at the live gRPC server
+    viewer_iframe_url = (
+        "https://app.rerun.io/version/0.24.0/index.html"
+        "?url=rerun+http://127.0.0.1:9876/proxy"
+    )
+
     return jsonify({
-        "running": True,
-        "message": "Iframe mode - no native server needed"
+        "status": "started",
+        "recordingUrl": f"/api/recordings/{os.path.basename(record_path)}",
+        "iframeUrl": viewer_iframe_url
     })
+
+
+@app.route('/api/stop-session', methods=['POST'])
+def stop_session():
+    """Stop the current Rerun session (terminate the CLI process)."""
+    global rerun_server_proc
+
+     # Step 1: Disconnect Rerun gRPC client cleanly to avoid transport errors
+    try:
+        rr.disconnect()
+        print("[stop-session] rr.disconnect() successful")
+    except Exception as e:
+        print(f"[stop-session] rr.disconnect() failed: {e}")
+
+    # Step 2: Kill the rerun CLI process depending on platform
+    if rerun_server_proc and rerun_server_proc.poll() is None:
+        print("[stop-session] Stopping rerun CLI...")
+        if sys.platform == "win32":
+            rerun_server_proc.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(os.getpgid(rerun_server_proc.pid), signal.SIGTERM)
+            # On Linux/macOS, if rerun spawns subprocesses, rerun_server_proc.terminate() won’t kill them.
+            # os.setsid + os.killpg(...) guarantees the whole process group gets nuked.
+        rerun_server_proc.wait(timeout=5)
+        print("[stop-session] Rerun CLI stopped")
+
+    return jsonify({"status": "stopped", "message": "Session stopped"})
+
+# @app.route('/api/save-recording', methods=['POST'])
+# def save_recording():
+#     """Return the URL to the saved .rrd file if it exists."""
+#     global record_path
+#     abs_path = os.path.abspath(record_path or "")
+#     if not os.path.exists(abs_path):
+#         return jsonify(status='error', message='Recording missing'), 404
+
+#     filename = os.path.basename(record_path)
+#     return jsonify({
+#         "status": "success",
+#         "filename": filename,
+#         "url": f"http://localhost:5002/blueprints/{filename}"
+#     })
+
+
+# @app.route('/server-status', methods=['GET'])
+# def server_status():
+#     """Always return running status for iframe mode"""
+#     return jsonify({
+#         "running": True,
+#         "message": "Iframe mode - no native server needed"
+#     })
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -140,113 +364,113 @@ def health_check():
         "last_uploaded_exists": os.path.exists(UPLOAD_PATH)
     })
 
-@app.route('/api/live-blueprint', methods=['POST'])
-def live_blueprint():
-    try:
-        cfg = request.json
-        print(f"Generating blueprint with config: {cfg}")
+# @app.route('/api/live-blueprint', methods=['POST'])
+# def live_blueprint():
+#     try:
+#         cfg = request.json
+#         print(f"Generating blueprint with config: {cfg}")
 
-        rr.init("csi-camera-stream")
+#         rr.init("csi-camera-stream")
 
-        cols = []
+#         cols = []
 
-        # Only add camera column if requested
-        if cfg.get("showCamera", False):
-            camera_col = rrb.Vertical(
-                rrb.Spatial2DView(
-                    origin="camera/live_feed",
-                    contents=["camera/**"],
-                    name="Camera Feed"
-                ),
-                row_shares=[1.0]
-            )
-            cols.append(camera_col)
+#         # Only add camera column if requested
+#         if cfg.get("showCamera", False):
+#             camera_col = rrb.Vertical(
+#                 rrb.Spatial2DView(
+#                     origin="camera/live_feed",
+#                     contents=["camera/**"],
+#                     name="Camera Feed"
+#                 ),
+#                 row_shares=[1.0]
+#             )
+#             cols.append(camera_col)
 
-        # Heatmap column (always present)
-        heatmap_views = []
-        if cfg.get("showMagHeatmap", False):
-            heatmap_views.append(
-                rrb.TensorView(
-                    origin="csi/magnitude_heatmap",
-                    contents=["csi/magnitude_heatmap"],
-                    name="Magnitude Heatmap",
-                    view_fit="fill",
-                )
-            )
-        if cfg.get("showPhaseHeatmap", False):
-            heatmap_views.append(
-                rrb.TensorView(
-                    origin="csi/phase_heatmap",
-                    contents=["csi/phase_heatmap"],
-                    name="Phase Heatmap",
-                    view_fit="fill",
-                )
-            )
-        if not heatmap_views:
-            heatmap_views.append(
-                rrb.TextDocumentView(
-                    origin="info",
-                    contents=["info"],
-                    name="No Heatmap Selected"
-                )
-            )
-        heatmap_col = rrb.Vertical(*heatmap_views, row_shares=[1.0]*len(heatmap_views))
-        cols.append(heatmap_col)
+#         # Heatmap column (always present)
+#         heatmap_views = []
+#         if cfg.get("showMagHeatmap", False):
+#             heatmap_views.append(
+#                 rrb.TensorView(
+#                     origin="csi/magnitude_heatmap",
+#                     contents=["csi/magnitude_heatmap"],
+#                     name="Magnitude Heatmap",
+#                     view_fit="fill",
+#                 )
+#             )
+#         if cfg.get("showPhaseHeatmap", False):
+#             heatmap_views.append(
+#                 rrb.TensorView(
+#                     origin="csi/phase_heatmap",
+#                     contents=["csi/phase_heatmap"],
+#                     name="Phase Heatmap",
+#                     view_fit="fill",
+#                 )
+#             )
+#         if not heatmap_views:
+#             heatmap_views.append(
+#                 rrb.TextDocumentView(
+#                     origin="info",
+#                     contents=["info"],
+#                     name="No Heatmap Selected"
+#                 )
+#             )
+#         heatmap_col = rrb.Vertical(*heatmap_views, row_shares=[1.0]*len(heatmap_views))
+#         cols.append(heatmap_col)
 
-        # TimeSeries column (always present)
-        timeseries_views = []
-        if cfg.get("showTimeSeries", False):
-            for sc in cfg.get("subcarriers", []):
-                if cfg.get("showMagTimeSeries", False):
-                    path = f"magnitude_vs_time/subcarrier_{sc:03d}"
-                    timeseries_views.append(
-                        rrb.TimeSeriesView(
-                            origin=path,
-                            contents=[path],
-                            name=f"Magnitude SC {sc}"
-                        )
-                    )
-                if cfg.get("showPhaseTimeSeries", False):
-                    path = f"phase_vs_time/subcarrier_{sc:03d}"
-                    timeseries_views.append(
-                        rrb.TimeSeriesView(
-                            origin=path,
-                            contents=[path],
-                            name=f"Phase SC {sc}"
-                        )
-                    )
-        if not timeseries_views:
-            timeseries_views.append(
-                rrb.TextDocumentView(
-                    origin="info",
-                    contents=["info"],
-                    name="No TimeSeries Selected"
-                )
-            )
-        timeseries_col = rrb.Vertical(*timeseries_views, row_shares=[1.0]*len(timeseries_views))
-        cols.append(timeseries_col)
+#         # TimeSeries column (always present)
+#         timeseries_views = []
+#         if cfg.get("showTimeSeries", False):
+#             for sc in cfg.get("subcarriers", []):
+#                 if cfg.get("showMagTimeSeries", False):
+#                     path = f"magnitude_vs_time/subcarrier_{sc:03d}"
+#                     timeseries_views.append(
+#                         rrb.TimeSeriesView(
+#                             origin=path,
+#                             contents=[path],
+#                             name=f"Magnitude SC {sc}"
+#                         )
+#                     )
+#                 if cfg.get("showPhaseTimeSeries", False):
+#                     path = f"phase_vs_time/subcarrier_{sc:03d}"
+#                     timeseries_views.append(
+#                         rrb.TimeSeriesView(
+#                             origin=path,
+#                             contents=[path],
+#                             name=f"Phase SC {sc}"
+#                         )
+#                     )
+#         if not timeseries_views:
+#             timeseries_views.append(
+#                 rrb.TextDocumentView(
+#                     origin="info",
+#                     contents=["info"],
+#                     name="No TimeSeries Selected"
+#                 )
+#             )
+#         timeseries_col = rrb.Vertical(*timeseries_views, row_shares=[1.0]*len(timeseries_views))
+#         cols.append(timeseries_col)
 
-        # Final layout: columns based on selection
-        layout = rrb.Horizontal(*cols, column_shares=[1.0]*len(cols))
+#         # Final layout: columns based on selection
+#         layout = rrb.Horizontal(*cols, column_shares=[1.0]*len(cols))
 
-        blueprint = rrb.Blueprint(layout, collapse_panels=True)
-        blueprint_id = f"{uuid.uuid4()}.rrd"
-        blueprint_path = os.path.join(BLUEPRINTS_DIR, blueprint_id)
-        rr.save(blueprint_path, blueprint)
+#         blueprint = rrb.Blueprint(layout, collapse_panels=True)
+#         blueprint_id = f"{uuid.uuid4()}.rrd"
+#         blueprint_path = os.path.join(BLUEPRINTS_DIR, blueprint_id)
+#         rr.save(blueprint_path, blueprint)
 
-        url = f"http://localhost:5002/blueprints/{blueprint_id}"
-        return jsonify({
-            "status": "success",
-            "blueprintUrl": url,
-            "blueprintId": blueprint_id
-        })
+#         url = f"http://localhost:5002/blueprints/{blueprint_id}"
+#         return jsonify({
+#             "status": "success",
+#             "blueprintUrl": url,
+#             "blueprintId": blueprint_id
+#         })
 
-    except Exception as e:
-        print(f"Error generating blueprint: {e}")
-        return jsonify({
-            "status": "error",
-            "message": f"Failed to generate blueprint: {e}"
-        }), 500
+#     except Exception as e:
+#         print(f"Error generating blueprint: {e}")
+#         return jsonify({
+#             "status": "error",
+#             "message": f"Failed to generate blueprint: {e}"
+#         }), 500
 
 
 @app.route('/blueprints/<blueprint_id>', methods=['GET'])
@@ -281,20 +505,30 @@ def live_stream():
     })
 
 if __name__ == '__main__':
-    print("Starting simplified Flask backend server for iframe mode...")
-    print("Available endpoints:")
-    print("- GET /server-status: Always returns running (iframe mode)")
-    print("- POST /upload: Upload RRD file for iframe viewer")
-    print("- GET /get-blueprint: Serve D1.rrd blueprint")
-    print("- GET /last-uploaded: Serve the last uploaded RRD file")
-    print("- GET /health: Health check")
-    print("\nThis server only handles file uploads and serving for iframe viewer.")
-    #print("No native rerun server management.")
-    
+    print("Starting simplified Flask backend server for session mode...")
+    # print("Available endpoints:")
+    # print("- POST /api/start-session: Start live session")
+    # print("- POST /api/stop-session: Stop live session")
+    # print("- POST /api/save-recording: Save/download recording")
+    # print("- GET /server-status: Always returns running (iframe mode)")
+    # print("- POST /upload: Upload RRD file for iframe viewer")
+    # print("- GET /get-blueprint: Serve D1.rrd blueprint")
+    # print("- GET /last-uploaded: Serve the last uploaded RRD file")
+    # print("- GET /health: Health check")
+    # print("\nThis server only handles file uploads and serving for iframe viewer.")
     try:
-        # Use waitress for production-ready server
         serve(app, host='127.0.0.1', port=5002, threads=4)
-    except KeyboardInterrupt:
-        print("\nShutting down...")
-    except Exception as e:
-        print(f"Error starting server: {e}")
+    finally:
+        if rerun_server_proc and rerun_server_proc.poll() is None:
+            print("[shutdown] Flask server exiting, stopping Rerun CLI...")
+        try:
+            rr.disconnect()
+        except Exception as e:
+            print(f"[shutdown] rr.disconnect() failed: {e}")
+        
+        if sys.platform == "win32":
+            rerun_server_proc.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(os.getpgid(rerun_server_proc.pid), signal.SIGTERM)
+        rerun_server_proc.wait(timeout=5)
+        print("[shutdown] Rerun CLI terminated")
