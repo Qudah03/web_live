@@ -13,9 +13,9 @@ export default function RerunIframeViewer() {
 
         const viewerUrl = new URL("https://app.rerun.io/version/0.24.0/index.html");
 
-        // Append the data file and blueprint file
+        // Append only the data file (no forced blueprint)
         viewerUrl.searchParams.set("url", "http://localhost:5002/last-uploaded");
-        viewerUrl.searchParams.set("blueprint-url", "http://localhost:5002/get-blueprint");
+        // Removed blueprint-url to allow original RRD layout
 
         setIframeUrl(viewerUrl.toString());
       } catch (err) {

@@ -101,10 +101,10 @@ export default function Upload() {
               height: '100vh'
             }}>
               <iframe 
-                // The iframe loads with TWO URLs:
-                src="https://app.rerun.io/version/0.24.0/index.html?url=http://localhost:5002/last-uploaded&url=http://localhost:5002/get-blueprint"
-                //                                                     ↑                                    ↑
-                //                                              Your uploaded file                    Blueprint file                
+                // The iframe loads your uploaded file in its original format:
+                src="https://app.rerun.io/version/0.24.0/index.html?url=http://localhost:5002/last-uploaded"
+                //                                                     ↑
+                //                                              Your uploaded file (original layout)              
                 width="100%" 
                 height="100%" 
                 style={{ border: 'none' }}
