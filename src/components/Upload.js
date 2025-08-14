@@ -56,15 +56,15 @@ export default function Upload({ preselectedFile }) {
             disabled={loading}
           />
         )}
-        {fileName && <p>Selected: {fileName}</p>}
+        {fileName && <h3>Selected: {fileName}</h3>}
         {loading && <p style={{ color: 'blue' }}>Uploading...</p>}
-        {uploadSuccess && <p style={{ color: 'green' }}>✅ Upload successful!</p>}
+        {uploadSuccess && <p style={{ color: 'green' }}>Upload successful!</p>}
         {uploadError && <p style={{ color: 'red' }}>❌ {uploadError}</p>}
       </div>
 
       {uploadSuccess && (
         <div style={{ marginTop: '15px' }}>
-          <h4>🎯 Your RRD File Viewer:</h4>
+          {/* <h4>🎯 Your RRD File Viewer:</h4> */}
           <div style={{
             border: '2px solid #007bff',
             borderRadius: '5px',
