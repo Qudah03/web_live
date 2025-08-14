@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Select from 'react-select';
 import SubcarrierSelector from './SubcarrierSelector';
+import ServerControlPanel from './ServerControlPanel';
 
 const graphOptions = [
   { label: 'Camera', value: 'camera', group: 'Camera' },
@@ -179,6 +180,14 @@ const GraphSelector = ({ onSelectionChange }) => {
           </div>
         ) : null
       )}
+      <ServerControlPanel
+        graphConfigs={selectedOptions.map(opt => ({
+          type: opt.value.includes('ts') ? 'timeseries' : opt.value === 'camera' ? 'camera' : 'heatmap',
+          mode: opt.value.includes('phase') ? 'phase' : 'magnitude',
+          subcarrier: isTimeSeries(opt.value) ? (subcarrierData[opt.id] || 'all') : null
+        }))}
+        isValidConfig={isValid}
+      />
     </div>
   );
 };
