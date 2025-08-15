@@ -63,24 +63,24 @@ export default function Upload({ preselectedFile }) {
       </div>
 
       {uploadSuccess && (
-        <div style={{ marginTop: '15px' }}>
-          {/* <h4>🎯 Your RRD File Viewer:</h4> */}
-          <div style={{
-            border: '2px solid #007bff',
-            borderRadius: '5px',
-            overflow: 'hidden',
-            marginTop: '10px',
-            width: '200vh',
-            height: '100vh'
-          }}>
-            <iframe
-              src="https://app.rerun.io/version/0.24.0/index.html?url=http://localhost:5002/last-uploaded&url=http://localhost:5002/get-blueprint"
-              width="100%"
-              height="100%"
-              style={{ border: 'none' }}
-              title="Rerun RRD Viewer"
-            />
-          </div>
+        <div style={{ 
+          marginTop: '32px',
+          display: 'flex',
+          justifyContent: 'center',
+          width: '100%'
+        }}>
+          <iframe
+            src="https://app.rerun.io/version/0.24.0/index.html?url=http://localhost:5002/last-uploaded&url=http://localhost:5002/get-blueprint"
+            title="Rerun RRD Viewer"
+            style={{
+              width: 'calc(100vw - 80px)', // Full viewport width minus padding
+              height: '80vh', // 80% of viewport height
+              minHeight: '700px', // Minimum height for readability
+              maxWidth: '1800px', // Maximum width to prevent it from being too wide
+              border: '2px solid #007bff',
+              borderRadius: '8px'
+            }}
+          />
         </div>
       )}
     </div>

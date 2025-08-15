@@ -15,8 +15,6 @@ export default function Home() {
 
   const [showUpload, setShowUpload] = useState(false);
   const [showLive, setShowLive] = useState(false);
-  const [selectedGraphs, setSelectedGraphs] = useState([]);
-  const [isValidSelection, setIsValidSelection] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [showHeader, setShowHeader] = useState(false);
 
@@ -30,21 +28,12 @@ export default function Home() {
       if (window.scrollY > 100) {
         setShowHeader(true);
       } else if (!showLive && !showUpload) {
-        setShowHeader(false);
+        setShowHeader(true); // Always show header 
       }
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, [showLive, showUpload]);
-
-  const handleGraphSelection = (selected, isValid) => {
-    setSelectedGraphs(selected);
-    setIsValidSelection(isValid);
-  };
-
-  const handleStart = () => {
-    alert(`Starting with selected graphs: ${selectedGraphs.map(opt => opt.label).join(', ')}`);
-  };
 
   const handleUploadButtonClick = () => {
     fileInputRef.current.click();
@@ -221,25 +210,9 @@ export default function Home() {
           onChange={handleFileChosen}
         />
 
-        {/* *** Added Graph Selector + Start button here *** */}
+        {/* *** Graph Selector (now includes Start button) *** */}
         <div style={{ marginTop: '40px' }}>
-          <GraphSelector onSelectionChange={handleGraphSelection} />
-          <button
-            onClick={handleStart}
-            disabled={!isValidSelection}
-            style={{
-              marginTop: '20px',
-              padding: '10px 20px',
-              fontSize: '16px',
-              backgroundColor: isValidSelection ? '#007bff' : '#ccc',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: isValidSelection ? 'pointer' : 'not-allowed',
-            }}
-          >
-            Start
-          </button>
+          <GraphSelector />
         </div>
       </div>
 
