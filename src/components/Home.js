@@ -193,6 +193,20 @@ export default function Home() {
             <li>
               - You can run an instance of ssi-log-rs locally on your PC alongside asp-ssi-guirs if you'd like to log data in RRD format.
             </li>
+            <li>
+              - <strong>Server IP Address:</strong> When deploying, configure your CSI data clients to connect to{' '}
+              <code style={{ 
+                backgroundColor: '#f8f9fa', 
+                padding: '2px 6px', 
+                borderRadius: '4px', 
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '0.9rem',
+                border: '1px solid #e9ecef'
+              }}>
+                {window.location.hostname}:{window.location.port || '3000'}
+              </code>{' '}
+              (Backend: port 5002, Frontend: port {window.location.port || '3000'}, Rerun : port 9876 (default))
+            </li>
           </ul>
         </div>
 
