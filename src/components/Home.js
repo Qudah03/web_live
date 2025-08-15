@@ -105,8 +105,20 @@ export default function Home() {
             </a>
           </div>
 
-          <h1>
-    Channel State Information (CSI) <br /> Data Capture & Visualization Tool
+          <h1 style={{ 
+            textAlign: 'center',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: '600',
+            fontSize: 'clamp(2.5rem, 5vw, 4rem)',
+            lineHeight: '1.1',
+            letterSpacing: '-0.02em',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            marginBottom: '1rem'
+          }}>
+    Wi-EYE: Real-Time CSI Data capture <br /> and Visualization Platform
   </h1>
 
         {/* <div style={{ display: 'flex', alignItems: 'center', gap: '20px', justifyContent: 'center', marginBottom: '20px' }}>
