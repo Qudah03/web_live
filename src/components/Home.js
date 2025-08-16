@@ -159,74 +159,107 @@ export default function Home() {
             <p>Gesture 3</p>
           </div>
         </div>
-        <p>csi-log.rs is a rerun.io based remote data logging & visualization interface for CSI data capture. csi-log-rs operates as a complementary interface for the Rust-based esp-csi-gui:rs local data capture tool.<br/>Unlike, esp-csi-gui-rs, csi:log-s supports remote logging and storage in the rerun.io RRD format allowing for time capture and replay of events.</p>
-        <p>esp-csi:gui-rs is Rust-based cross-platform CSI live-monitoring tool that enables the collection of live CSI data locally from ESP32 devices.<br/>While gsi-log-rs currently supports, esp-csi-guirs, the gsi-log-rs interface is meant to be agnostic to any underlying CSI collection framework as long as data is provided in the correct format.</p>
-        <div style={{ lineHeight: '1.0' }}>
-          <h3 style={{ marginBottom: '0.5rem' }}>Instructions:</h3>
-          <ul style={{ marginTop: '0', marginBottom: '1.5rem', paddingLeft: '1.5rem', fontSize: '0.95rem' }}>
-            <li>Add the list of visualizations you would like to appear below.</li>
-            <li>Start the gsi-log-rs rerun.io streaming server.</li>
-            <li>Use the specified IP address to connect your client (Ex. esp-csi-gui-rs running locally).</li>
+        
+        <div style={{ 
+          lineHeight: '1.4',
+          fontFamily: 'Inter, sans-serif',
+          maxWidth: '900px',
+          margin: '0 auto'
+        }}>
+          <h3 style={{ 
+            marginBottom: '1rem',
+            marginTop: '2rem',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: '600',
+            fontSize: '1.3rem',
+            color: '#2d3748',
+            borderBottom: '2px solid #667eea',
+            paddingBottom: '0.5rem'
+          }}>Instructions:</h3>
+          <ul style={{ 
+            marginTop: '0', 
+            marginBottom: '2rem', 
+            paddingLeft: '1.5rem', 
+            fontSize: '1rem',
+            lineHeight: '1.7',
+            color: '#4a5568'
+          }}>
+            <li style={{ marginBottom: '0.7rem' }}>Add the list of visualizations you would like to appear below.</li>
+            <li style={{ marginBottom: '0.7rem' }}>Start the csi-log-rs rerun.io streaming server.</li>
+            <li style={{ marginBottom: '0.7rem' }}>Use the specified IP address to connect your client (e.g., esp-csi-gui-rs running locally).</li>
           </ul>
 
-          <h3 style={{ marginBottom: '0.5rem' }}>Notes:</h3>
-          <ul style={{ listStyleType: 'none', paddingLeft: '1rem' }}>
-            <li>
-              - If you already have a stored RRD from a previous experiment you can simply{' '}
+          <h3 style={{ 
+            marginBottom: '1rem',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: '600',
+            fontSize: '1.3rem',
+            color: '#2d3748',
+            borderBottom: '2px solid #667eea',
+            paddingBottom: '0.5rem'
+          }}>Notes:</h3>
+          <ul style={{ 
+            listStyleType: 'none', 
+            paddingLeft: '0',
+            fontSize: '1rem',
+            lineHeight: '1.7',
+            color: '#4a5568'
+          }}>
+            <li style={{ 
+              marginBottom: '1rem'
+            }}>
+              💾 If you already have a stored RRD from a previous experiment you can simply{' '}
               <button
                 onClick={handleUploadButtonClick}
                 style={{
-                  background: 'none',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                   border: 'none',
-                  color: '#007bff',
+                  color: 'white',
                   cursor: 'pointer',
-                  textDecoration: 'underline',
-                  padding: 0,
+                  padding: '4px 12px',
+                  borderRadius: '6px',
                   fontSize: '0.95rem',
-                  fontFamily: 'inherit',
+                  fontFamily: 'Inter, sans-serif',
+                  fontWeight: '500',
+                  transition: 'transform 0.2s ease',
+                  boxShadow: '0 2px 4px rgba(102, 126, 234, 0.3)'
                 }}
+                onMouseOver={(e) => e.target.style.transform = 'translateY(-1px)'}
+                onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
               >
                 upload your file
               </button>{' '}
               to replay it.
             </li>
-            <li>
-              - You can run an instance of ssi-log-rs locally on your PC alongside asp-ssi-guirs if you'd like to log data in RRD format.
+            <li style={{ 
+              marginBottom: '1rem'
+            }}>
+              🖥️ You can run an instance of csi-log-rs locally on your PC alongside esp-csi-gui-rs if you'd like to log data in RRD format.
             </li>
-            <li>
-              - <strong>Server IP Address:</strong> When deploying, configure your CSI data clients to connect to{' '}
+            <li style={{ 
+              marginBottom: '0'
+            }}>
+              🌐 <strong style={{ color: '#2d3748' }}>Server IP Address:</strong> When deploying, configure your CSI data clients to connect to{' '}
               <code style={{ 
-                backgroundColor: '#f8f9fa', 
-                padding: '2px 6px', 
-                borderRadius: '4px', 
+                backgroundColor: '#1a202c', 
+                color: '#68d391',
+                padding: '4px 8px', 
+                borderRadius: '6px', 
                 fontFamily: 'JetBrains Mono, monospace',
                 fontSize: '0.9rem',
-                border: '1px solid #e9ecef'
+                border: '1px solid #2d3748',
+                fontWeight: '500'
               }}>
                 {window.location.hostname}:{window.location.port || '3000'}
               </code>{' '}
-              (Backend: port 5002, Frontend: port {window.location.port || '3000'}, Rerun : port 9876 (default))
+              and set the stream name to "csi-camera-stream".
+              <br/>
+              <span style={{ fontSize: '0.9rem', color: '#718096', marginTop: '0.5rem', display: 'inline-block' }}>
+                Backend: port 5002 | Frontend: port {window.location.port || '3000'} | Rerun: port 9876 (default)
+              </span>
             </li>
           </ul>
         </div>
-
-
-        {/* <div className="button-group" style={{ marginBottom: '20px' }}>
-          <button onClick={handleUploadButtonClick}>
-            Upload RRD File
-          </button>
-          <button
-            onClick={() => {
-              setShowLive(true);
-              setShowUpload(false);
-              setShowHeader(true);
-              setTimeout(() => scrollToSection(liveRef), 100);
-            }}
-          >
-            Live Stream
-          </button>
-        </div> */}
-
         {/* Hidden file input */}
         <input
           type="file"
